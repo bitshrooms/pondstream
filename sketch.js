@@ -254,7 +254,7 @@ class Particle {
 
     update() {
         if (this.isSubParticle) {
-            this.alpha -= 5;
+            this.alpha -= 4;
         } else {
             this.vel.limit(this.maxSpeed);
         }
