@@ -438,7 +438,7 @@ function createExplosion(session, reward, boost, shouldDie, baseColor) {
         subParticle.vel.setMag(explosionSpeed);
         (isTabVisible || shouldDie) && session.subParticles.push(subParticle);
 
-        const recoilForce = subParticle.vel.copy().mult(-0.1);
+        const recoilForce = subParticle.vel.copy().mult(-0.01);
         parent.applyForce(recoilForce);
     }
 
