@@ -164,15 +164,17 @@ function connectWebSocket() {
                 }
 
                 if (message.msg._hash === 'broadcast|valid|CLAIMING') {
-                    let boost = message.payload_2.boost || 0;
-                    createExplosion(sessions[message.sig], message.payload_2.reward, boost, true, [0, 255, 100]);
+                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, true, [0, 255, 100]);
                 } else if (message.msg._hash === 'broadcast|valid|RUNNING') {
-                    let boost = message.payload_2.boost || 0;
-                    createExplosion(sessions[message.sig], message.payload_2.reward, boost, false, [0, 150, 255]);
+                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, false, [0, 150, 255]);
                 } else if (message.msg._hash === 'broadcast|valid|EXPIRED') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, 0, true, [139, 0, 0]);
+                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, true, [139, 0, 0]);
                 } else if (message.msg._hash === 'broadcast|valid|SLASHING') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, 0, true, [255, 215, 0]);
+                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, true, [255, 215, 0]);
+                } else if (message.msg._hash === 'broadcast|valid|MINING') {
+                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, false, [193, 72, 228]);
+                } else if (message.msg._hash === 'broadcast|valid|JOINING') {
+                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, false, [228, 72, 186]);
                 } else if (message.msg._hash === 'broadcast|work|peer_hash_validation') {
                     createRecoilSubParticle(sessions[message.sig], message.payload_3.hash);
                 } else {
@@ -295,14 +297,14 @@ class Particle {
 
 function createSubParticle(session) {
     let parent = session.particle;
-    let subParticleSize = random(5, 15);
+    let subParticleSize = 5;
     let color = [255 - random(50), 255 - random(50), 255 - random(50)];
 
     let subParticle = new Particle(parent.pos.x, parent.pos.y, subParticleSize, color, true);
     session.subParticles.push(subParticle);
 
     let recoilForce = subParticle.vel.copy().mult(-1);
-    recoilForce.setMag(0.1);
+    recoilForce.div(10);
     parent.applyForce(recoilForce);
 
     parent.color = color;
