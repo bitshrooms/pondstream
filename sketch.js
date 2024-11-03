@@ -142,6 +142,7 @@ function connectWebSocket() {
             msg._timestamp = new Date();
 
             let respMsg = new ResponseMessage(msg);
+            respMsg.msg._hash = respMsg.hash();
 
             if (respMsg.sig) {
                 const message = respMsg;
