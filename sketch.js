@@ -107,19 +107,19 @@ class ResponseMessage {
         this.topic = msg.topic || 'topic';
         this.event = msg.event;
 
-        this.payload1 = msg.payload;
-        this.payload2 = this.payload1 && this.payload1.payload;
-        this.payload3 = this.payload2 && this.payload2.payload;
-        this.payload2_0 = this.payload2 && this.payload2[0];
+        this.payload1Event = msg.payload?.event;
+        this.payload1Status = msg.payload?.status;
+        this.payload2Message = msg.payload?.payload?.message;
+        this.payload2Status = msg.payload?.payload?.status;
+        this.payload2_0Status = Array.isArray(msg.payload?.payload)
+            ? msg.payload.payload[0]?.status
+            : undefined;
 
-        this.payload1Event = this.payload1 && this.payload1.event;
-        this.payload1Status = this.payload1 && this.payload1.status;
-        this.payload2Message = this.payload2 && this.payload2.message;
-        this.payload2Status = this.payload2 && this.payload2.status;
-        this.payload2_0Status = this.payload2_0 && this.payload2_0.status;
-
-        this.sig = this.payload2 && this.payload2.sig;
-        this.key = this.payload3 && this.payload3.key;
+        this.sig = msg.payload?.payload?.sig;
+        this.key = msg.payload?.payload?.payload?.key;
+        this.reward = Number(msg.payload?.payload?.reward) || 0;
+        this.boost = Number(msg.payload?.payload?.boost) || 0;
+        this.hashValue = Number(msg.payload?.payload?.payload?.hash) || 0;
     }
 
     hash() {
@@ -232,25 +232,25 @@ function handleIncomingMessage(message) {
     const session = sessions.get(sessionSig);
     switch (message.msg._hash) {
         case 'broadcast|valid|CLAIMING':
-            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, true, [0, 255, 100]);
+            createExplosion(session, message.reward, message.boost, true, [0, 255, 100]);
             break;
         case 'broadcast|valid|RUNNING':
-            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, false, [0, 150, 255]);
+            createExplosion(session, message.reward, message.boost, false, [0, 150, 255]);
             break;
         case 'broadcast|valid|EXPIRED':
-            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, true, [139, 0, 0]);
+            createExplosion(session, message.reward, message.boost, true, [139, 0, 0]);
             break;
         case 'broadcast|valid|SLASHING':
-            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, true, [255, 215, 0]);
+            createExplosion(session, message.reward, message.boost, true, [255, 215, 0]);
             break;
         case 'broadcast|valid|MINING':
-            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, false, [193, 72, 228]);
+            createExplosion(session, message.reward, message.boost, false, [193, 72, 228]);
             break;
         case 'broadcast|valid|JOINING':
-            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, false, [228, 72, 186]);
+            createExplosion(session, message.reward, message.boost, false, [228, 72, 186]);
             break;
         case 'broadcast|work|peer_hash_validation':
-            createRecoilSubParticle(session, message.payload3.hash);
+            createRecoilSubParticle(session, message.hashValue);
             break;
         default:
             createSubParticle(session);
