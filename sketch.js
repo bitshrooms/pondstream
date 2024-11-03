@@ -339,7 +339,7 @@ function createExplosion(session, reward, boost, shouldDie, color) {
     let explosionSpeed = map(boost, 0, 400, 1, 5);
 
     for (let i = 0; i < numParticles; i++) {
-        let subParticleSize = random(3, 10);
+        let subParticleSize = map(boost, 0, 400, 7, 16);
 
         let subParticleColor = color.map(c => constrain(c + random(-20, 20), 0, 255));
 
