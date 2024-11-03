@@ -205,7 +205,7 @@ function isValidMessage(msg) {
 
 // Function to handle incoming messages and update visualization
 function handleIncomingMessage(message) {
-    const currTime = millis();
+    const currTime = Date.now();
     const sessionSig = message.sig;
 
     if (!sessions.has(sessionSig)) {
@@ -262,7 +262,7 @@ function draw() {
     background(0);
     translate(-width / 2, -height / 2);
 
-    const currTime = millis();
+    const currTime = Date.now();
 
     // Update and display main particles
     particles = particles.filter((particle) => {
