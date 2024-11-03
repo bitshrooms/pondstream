@@ -282,7 +282,7 @@ function draw() {
             }
         }
 
-        if (particle.alpha <= 0) {
+        if (particle.alpha <= 0 && session.subParticles.filter(subParticle => subParticle.alpha > 0).length == 0) {
             sessions.delete(particle.sig);
             return false;
         }
