@@ -26,6 +26,7 @@ let socket;
 let particles = [];
 let sessions = new Map();
 let reconnectAttempts = 0;
+let isTabVisible = true;
 
 // Class to manage WebSocket messages
 class MessageBuilder {
@@ -259,15 +260,17 @@ function handleIncomingMessage(message) {
 
 // Main p5.js draw loop
 function draw() {
-    background(0);
-    translate(-width / 2, -height / 2);
+    if (isTabVisible) {
+        background(0);
+        translate(-width / 2, -height / 2);
+    }
 
     const currTime = Date.now();
 
-    // Update and display main particles
+    // Update particles and sessions regardless of visibility
     particles = particles.filter((particle) => {
         particle.update();
-        particle.display();
+        isTabVisible && particle.display();
 
         const session = sessions.get(particle.sig);
         if (session) {
@@ -290,7 +293,7 @@ function draw() {
     for (const session of sessions.values()) {
         session.subParticles = session.subParticles.filter((subParticle) => {
             subParticle.update();
-            subParticle.display();
+            isTabVisible && subParticle.display();
             return subParticle.alpha > 0;
         });
     }
@@ -375,7 +378,7 @@ function createSubParticle(session) {
         color,
         true
     );
-    session.subParticles.push(subParticle);
+    isTabVisible && session.subParticles.push(subParticle);
 
     const recoilForce = subParticle.vel.copy().mult(-0.1);
     parent.applyForce(recoilForce);
@@ -399,7 +402,7 @@ function createRecoilSubParticle(session, hashValue) {
         true
     );
     subParticle.vel.setMag(subParticleSpeed);
-    session.subParticles.push(subParticle);
+    isTabVisible && session.subParticles.push(subParticle);
 
     const recoilForce = subParticle.vel.copy().mult(-0.1);
     parent.applyForce(recoilForce);
@@ -417,33 +420,40 @@ function createExplosion(session, reward, boost, shouldDie, baseColor) {
 
     const explosionSpeed = map(boost, 0, 400, 1, 5);
 
-    for (let i = 0; i < numParticles; i++) {
-        const subParticleSize = map(boost, 0, 400, 7, 16);
+    if (isTabVisible || shouldDie) {
+        for (let i = 0; i < numParticles; i++) {
+            const subParticleSize = map(boost, 0, 400, 7, 16);
 
-        const subParticleColor = baseColor.map((c) =>
-            constrain(c + random(-20, 20), 0, 255)
-        );
+            const subParticleColor = baseColor.map((c) =>
+                constrain(c + random(-20, 20), 0, 255)
+            );
 
-        const subParticle = new Particle(
-            parent.pos.x,
-            parent.pos.y,
-            subParticleSize,
-            subParticleColor,
-            true
-        );
+            const subParticle = new Particle(
+                parent.pos.x,
+                parent.pos.y,
+                subParticleSize,
+                subParticleColor,
+                true
+            );
 
-        subParticle.vel.setMag(explosionSpeed);
-        session.subParticles.push(subParticle);
-
-        parent.color = subParticle.color;
+            subParticle.vel.setMag(explosionSpeed);
+            session.subParticles.push(subParticle);
+        }
     }
+
+    parent.color = baseColor;
 
     if (shouldDie) {
         parent.alpha = 0;
     }
 }
 
+
 // Adjust canvas size when window is resized
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
+
+document.addEventListener('visibilitychange', function() {
+    isTabVisible = !document.hidden;
+});
