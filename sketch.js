@@ -117,7 +117,7 @@ class ResponseMessage {
 }
 
 function setup() {
-    createCanvas(windowWidth, windowHeight);
+    createCanvas(windowWidth, windowHeight, WEBGL);
     connectWebSocket();
 }
 
@@ -200,6 +200,7 @@ function connectWebSocket() {
 
 function draw() {
     background(0);
+    translate(-width / 2, -height / 2);
 
     const currTime = millis();
 
@@ -284,9 +285,12 @@ class Particle {
     }
 
     display() {
+        push();
         noStroke();
         fill(...this.color, this.alpha);
-        ellipse(this.pos.x, this.pos.y, this.size);
+        translate(this.pos.x, this.pos.y);
+        ellipse(0, 0, this.size);
+        pop();
     }
 }
 
