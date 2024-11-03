@@ -28,6 +28,12 @@ let sessions = new Map();
 let reconnectAttempts = 0;
 let isTabVisible = true;
 
+const queryString = window.location.search;
+const urlParams = new URLSearchParams(queryString);
+const wallet = {
+    key: urlParams.get('wallet'),
+    sig: null
+}
 // Class to manage WebSocket messages
 class MessageBuilder {
     constructor(apiKey) {
@@ -209,6 +215,10 @@ function handleIncomingMessage(message) {
     const currTime = Date.now();
     const sessionSig = message.sig;
 
+    if (wallet.key && sessionSig && message.key == wallet.key) {
+        wallet.sig = sessionSig;
+    }
+
     if (!sessions.has(sessionSig)) {
         // Create a new session with a main particle
         const x = random(width);
@@ -217,6 +227,9 @@ function handleIncomingMessage(message) {
 
         const mainParticle = new Particle(x, y, 10, color);
         mainParticle.sig = sessionSig;
+        if (sessionSig == wallet.sig) {
+            mainParticle.wallet = wallet.key;
+        }
         sessions.set(sessionSig, {
             particle: mainParticle,
             subParticles: [],
@@ -308,6 +321,7 @@ class Particle {
         this.alpha = 255;
         this.isSubParticle = isSubParticle;
         this.sig = null;
+        this.wallet = null;
 
         this.vel = isSubParticle
             ? p5.Vector.random2D().mult(random(0.5, 2))
@@ -360,7 +374,14 @@ class Particle {
         noStroke();
         fill(...this.color, this.alpha);
         translate(this.pos.x, this.pos.y);
-        ellipse(0, 0, this.size);
+
+        if (this.wallet) {
+            rectMode(CENTER);
+            rect(0, 0, this.size, this.size);
+        } else {
+            ellipse(0, 0, this.size);
+        }
+
         pop();
     }
 }
