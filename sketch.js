@@ -420,25 +420,26 @@ function createExplosion(session, reward, boost, shouldDie, baseColor) {
 
     const explosionSpeed = map(boost, 0, 400, 1, 5);
 
-    if (isTabVisible || shouldDie) {
-        for (let i = 0; i < numParticles; i++) {
-            const subParticleSize = map(boost, 0, 400, 7, 16);
+    for (let i = 0; i < numParticles; i++) {
+        const subParticleSize = map(boost, 0, 400, 7, 16);
 
-            const subParticleColor = baseColor.map((c) =>
-                constrain(c + random(-20, 20), 0, 255)
-            );
+        const subParticleColor = baseColor.map((c) =>
+            constrain(c + random(-20, 20), 0, 255)
+        );
 
-            const subParticle = new Particle(
-                parent.pos.x,
-                parent.pos.y,
-                subParticleSize,
-                subParticleColor,
-                true
-            );
+        const subParticle = new Particle(
+            parent.pos.x,
+            parent.pos.y,
+            subParticleSize,
+            subParticleColor,
+            true
+        );
 
-            subParticle.vel.setMag(explosionSpeed);
-            session.subParticles.push(subParticle);
-        }
+        subParticle.vel.setMag(explosionSpeed);
+        (isTabVisible || shouldDie) && session.subParticles.push(subParticle);
+
+        const recoilForce = subParticle.vel.copy().mult(-0.1);
+        parent.applyForce(recoilForce);
     }
 
     parent.color = baseColor;
