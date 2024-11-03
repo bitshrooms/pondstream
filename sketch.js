@@ -4,7 +4,7 @@ let wsUrl = `wss://vkqjvwxzsxilnsmpngmc.supabase.co/realtime/v1/websocket?apikey
 let socket;
 let particles = [];
 let sessions = {};
-const TIMEOUT_DURATION = 300000;
+const TIMEOUT_DURATION = 300000; // 5 minutes
 
 class MessageBuilder {
     static sentMsgs = [];
@@ -153,6 +153,7 @@ function connectWebSocket() {
                     let y = random(height);
 
                     let mainParticle = new Particle(x, y, 10, [255 - random(50), 255 - random(50), 255 - random(50)]);
+                    mainParticle.sig = message.sig;
                     sessions[message.sig] = {
                         particle: mainParticle,
                         subParticles: [],
@@ -206,23 +207,18 @@ function draw() {
         particle.update();
         particle.display();
 
-        for (let sig in sessions) {
-            if (sessions[sig].particle === particle) {
-                if (currTime - sessions[sig].lastMessageTime > TIMEOUT_DURATION) {
-                    createExplosion(sessions[sig], 500e6, 0, true, [255, 255, 255]);
-                    delete sessions[sig];
-                    return false;
-                }
-                break;
+        const session = sessions[particle.sig];
+        if (session) {
+            if (currTime - session.lastMessageTime > TIMEOUT_DURATION) {
+                createExplosion(session, 500e6, 0, true, [255, 255, 255]);
+                delete sessions[particle.sig];
+                return false;
             }
         }
 
         if (particle.alpha <= 0) {
-            for (let sig in sessions) {
-                if (sessions[sig].particle === particle) {
-                    delete sessions[sig];
-                    break;
-                }
+            if (session) {
+                delete sessions[particle.sig];
             }
             return false;
         }
@@ -230,12 +226,10 @@ function draw() {
     });
 
     Object.values(sessions).forEach(session => {
-        session.subParticles.forEach((subParticle, index) => {
+        session.subParticles = session.subParticles.filter(subParticle => {
             subParticle.update();
             subParticle.display();
-            if (subParticle.alpha <= 0) {
-                session.subParticles.splice(index, 1);
-            }
+            return subParticle.alpha > 0;
         });
     });
 }
@@ -247,6 +241,7 @@ class Particle {
         this.color = color;
         this.alpha = 255;
         this.isSubParticle = isSubParticle;
+        this.sig = null;
 
         this.vel = isSubParticle ? p5.Vector.random2D().mult(random(0.5, 2)) : createVector(0, 0);
         this.acc = createVector(0, 0);
