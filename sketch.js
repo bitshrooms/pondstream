@@ -1,28 +1,50 @@
-const apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrcWp2d3h6c3hpbG5zbXBuZ21jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjYwODExMjMsImV4cCI6MjA0MTY1NzEyM30.u9gf6lU2fBmf0aiC7SYH4vVeWMRnGRu4ZZ7xOGl-XuI';
-let wsUrl = `wss://vkqjvwxzsxilnsmpngmc.supabase.co/realtime/v1/websocket?apikey=${apiKey}&eventsPerSecond=5&vsn=1.0.0`;
+'use strict';
 
+// Configuration Object
+const CONFIG = {
+    TIMEOUT_DURATION: 300000, // 5 minutes
+    WS_URL: 'wss://vkqjvwxzsxilnsmpngmc.supabase.co/realtime/v1/websocket',
+    EVENTS_PER_SECOND: 5,
+    VSN: '1.0.0',
+    HEARTBEAT_INTERVAL: 30000, // 30 seconds
+    MAX_RECONNECT_DELAY: 30000, // 30 seconds
+};
+
+const apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrcWp2d3h6c3hpbG5zbXBuZ21jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjYwODExMjMsImV4cCI6MjA0MTY1NzEyM30.u9gf6lU2fBmf0aiC7SYH4vVeWMRnGRu4ZZ7xOGl-XuI';
+
+// Helper function to get the WebSocket URL with query parameters
+function getWebSocketUrl() {
+    const params = new URLSearchParams({
+        apikey: apiKey,
+        eventsPerSecond: CONFIG.EVENTS_PER_SECOND,
+        vsn: CONFIG.VSN,
+    });
+    return `${CONFIG.WS_URL}?${params.toString()}`;
+}
+
+// Global Variables
 let socket;
 let particles = [];
-let sessions = {};
-const TIMEOUT_DURATION = 300000; // 5 minutes
+let sessions = new Map();
+let reconnectAttempts = 0;
 
+// Class to manage WebSocket messages
 class MessageBuilder {
-    static sentMsgs = [];
-    static refs = {
-        'realtime:blockengine': null,
-        'realtime:peersx': null
-    }
-
     constructor(apiKey) {
         this.apiKey = apiKey;
-        this.sent_idx = 1;
+        this.sentIdx = 1;
+        this.refs = {
+            'realtime:blockengine': null,
+            'realtime:peersx': null,
+        };
+        this.sentMsgs = [];
     }
 
     joinPayload() {
         return {
             config: {
                 broadcast: { ack: true },
-                presence: { key: "" },
+                presence: { key: '' },
                 postgres_changes: [],
                 private: false,
             },
@@ -30,18 +52,18 @@ class MessageBuilder {
         };
     }
 
-    buildMessage(topic, event, payload, ref, join_ref) {
+    buildMessage(topic, event, payload, ref, joinRef) {
         const message = { topic, event, payload, ref };
-        if (join_ref) {
-            message.join_ref = join_ref;
+        if (joinRef) {
+            message.join_ref = joinRef;
         }
         return message;
     }
 
-    realtimeTopicMessages(topic, ref, join_ref) {
+    realtimeTopicMessages(topic, ref, joinRef) {
         return {
-            phx_join: this.buildMessage(topic, 'phx_join', this.joinPayload(), ref, join_ref),
-            access_token: this.buildMessage(topic, 'access_token', { access_token: this.apiKey }, ref, join_ref),
+            phx_join: this.buildMessage(topic, 'phx_join', this.joinPayload(), ref, joinRef),
+            access_token: this.buildMessage(topic, 'access_token', { access_token: this.apiKey }, ref, joinRef),
         };
     }
 
@@ -50,191 +72,232 @@ class MessageBuilder {
     }
 
     joinMessages() {
-        MessageBuilder.refs['realtime:blockengine'] = this.sent_idx;
-        let blockengine_join = this.realtimeTopicMessages('realtime:blockengine', this.sent_idx++, MessageBuilder.refs['realtime:blockengine']).phx_join;
-        let blockengine_access = this.realtimeTopicMessages('realtime:blockengine', this.sent_idx++, MessageBuilder.refs['realtime:blockengine']).access_token;
+        this.refs['realtime:blockengine'] = this.sentIdx;
+        const blockengineJoin = this.realtimeTopicMessages('realtime:blockengine', this.sentIdx++, this.refs['realtime:blockengine']).phx_join;
+        const blockengineAccess = this.realtimeTopicMessages('realtime:blockengine', this.sentIdx++, this.refs['realtime:blockengine']).access_token;
 
-        MessageBuilder.refs['realtime:peersx'] = this.sent_idx;
-        let peersx_join = this.realtimeTopicMessages('realtime:peersx', this.sent_idx++, MessageBuilder.refs['realtime:peersx']).phx_join;
-        let peersx_access = this.realtimeTopicMessages('realtime:peersx', this.sent_idx++, MessageBuilder.refs['realtime:peersx']).access_token;
+        this.refs['realtime:peersx'] = this.sentIdx;
+        const peersxJoin = this.realtimeTopicMessages('realtime:peersx', this.sentIdx++, this.refs['realtime:peersx']).phx_join;
+        const peersxAccess = this.realtimeTopicMessages('realtime:peersx', this.sentIdx++, this.refs['realtime:peersx']).access_token;
 
-        let phoenix_heartbeat = this.phoenixHeartbeat(this.sent_idx++);
+        const phoenixHeartbeat = this.phoenixHeartbeat(this.sentIdx++);
 
-        let msgs = [
-            blockengine_join,
-            blockengine_access,
-            peersx_join,
-            peersx_access,
-            phoenix_heartbeat
-        ];
-
-        return msgs;
+        return [blockengineJoin, blockengineAccess, peersxJoin, peersxAccess, phoenixHeartbeat];
     }
 
     rejoinMessages() {
-        let msgs = [
-            this.realtimeTopicMessages('realtime:blockengine', this.sent_idx++, MessageBuilder.refs['realtime:blockengine']).access_token,
-            this.realtimeTopicMessages('realtime:peersx', this.sent_idx++, MessageBuilder.refs['realtime:peersx']).access_token,
-            this.phoenixHeartbeat(this.sent_idx++)
+        return [
+            this.realtimeTopicMessages('realtime:blockengine', this.sentIdx++, this.refs['realtime:blockengine']).access_token,
+            this.realtimeTopicMessages('realtime:peersx', this.sentIdx++, this.refs['realtime:peersx']).access_token,
+            this.phoenixHeartbeat(this.sentIdx++),
         ];
-        return msgs;
     }
 
     sendMessages(ws, messages) {
         messages.forEach((message) => {
             ws.send(JSON.stringify(message));
-            MessageBuilder.sentMsgs.push(message);
+            this.sentMsgs.push(message);
         });
     }
 }
 
+// Class to parse and handle incoming messages
 class ResponseMessage {
     constructor(msg) {
         this.msg = msg;
-
         this.topic = msg.topic || 'topic';
         this.event = msg.event;
 
-        this.payload_1 = msg.payload;
-        this.payload_2 = this.payload_1 && msg.payload.payload;
-        this.payload_3 = this.payload_2 && msg.payload.payload.payload;
-        this.payload_2_0 = this.payload_2 && msg.payload.payload[0];
+        this.payload1 = msg.payload;
+        this.payload2 = this.payload1 && this.payload1.payload;
+        this.payload3 = this.payload2 && this.payload2.payload;
+        this.payload2_0 = this.payload2 && this.payload2[0];
 
-        this.payload_1_event = this.payload_1 && this.payload_1.event;
-        this.payload_1_status = this.payload_1 && this.payload_1.status;
-        this.payload_2_message = this.payload_2 && this.payload_2.message;
-        this.payload_2_status = this.payload_2 && this.payload_2.status;
-        this.payload_2_0_status = this.payload_2_0 && this.payload_2_0.status;
+        this.payload1Event = this.payload1 && this.payload1.event;
+        this.payload1Status = this.payload1 && this.payload1.status;
+        this.payload2Message = this.payload2 && this.payload2.message;
+        this.payload2Status = this.payload2 && this.payload2.status;
+        this.payload2_0Status = this.payload2_0 && this.payload2_0.status;
 
-        this.sig = this.payload_2 && this.payload_2.sig;
-        this.key = this.payload_3 && this.payload_3.key;
+        this.sig = this.payload2 && this.payload2.sig;
+        this.key = this.payload3 && this.payload3.key;
     }
 
     hash() {
-        let hash = `${this.event}|${this.payload_1_event}|${this.payload_1_status}|${this.payload_2_message}|${this.payload_2_status}|${this.payload_2_0_status}`.replace(/\|undefined/g, '');
-        return hash;
+        let hashComponents = [
+            this.event,
+            this.payload1Event,
+            this.payload1Status,
+            this.payload2Message,
+            this.payload2Status,
+            this.payload2_0Status,
+        ];
+        return hashComponents.filter(Boolean).join('|');
     }
 }
 
+// Initialize p5.js setup
 function setup() {
     createCanvas(windowWidth, windowHeight, WEBGL);
     connectWebSocket();
 }
 
+// Function to connect to the WebSocket server
 function connectWebSocket() {
+    const wsUrl = getWebSocketUrl();
     socket = new WebSocket(wsUrl);
+    const messageBuilder = new MessageBuilder(apiKey);
 
-    let msgBuilder = new MessageBuilder(apiKey);
-
-    let stayAlive = setInterval(() => {
+    // Keep the connection alive with heartbeats
+    const stayAlive = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
-            msgBuilder.sendMessages(socket, msgBuilder.rejoinMessages());
+            messageBuilder.sendMessages(socket, messageBuilder.rejoinMessages());
         }
-    }, 30000);
+    }, CONFIG.HEARTBEAT_INTERVAL);
 
-    socket.onopen = function() {
-        msgBuilder.sendMessages(socket, msgBuilder.joinMessages());
+    socket.onopen = () => {
+        reconnectAttempts = 0;
+        messageBuilder.sendMessages(socket, messageBuilder.joinMessages());
     };
 
-    socket.onmessage = function(event) {
+    socket.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
-            msg._timestamp = new Date();
-
-            let respMsg = new ResponseMessage(msg);
-            respMsg.msg._hash = respMsg.hash();
-
-            if (respMsg.sig) {
-                const message = respMsg;
-                const currTime = millis();
-
-                if (!sessions[message.sig]) {
-                    let x = random(width);
-                    let y = random(height);
-
-                    let mainParticle = new Particle(x, y, 10, [255 - random(50), 255 - random(50), 255 - random(50)]);
-                    mainParticle.sig = message.sig;
-                    sessions[message.sig] = {
-                        particle: mainParticle,
-                        subParticles: [],
-                        lastMessageTime: currTime
-                    };
-                    particles.push(mainParticle);
-                } else {
-                    sessions[message.sig].lastMessageTime = currTime;
-                }
-
-                if (message.msg._hash === 'broadcast|valid|CLAIMING') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, true, [0, 255, 100]);
-                } else if (message.msg._hash === 'broadcast|valid|RUNNING') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, false, [0, 150, 255]);
-                } else if (message.msg._hash === 'broadcast|valid|EXPIRED') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, true, [139, 0, 0]);
-                } else if (message.msg._hash === 'broadcast|valid|SLASHING') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, true, [255, 215, 0]);
-                } else if (message.msg._hash === 'broadcast|valid|MINING') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, false, [193, 72, 228]);
-                } else if (message.msg._hash === 'broadcast|valid|JOINING') {
-                    createExplosion(sessions[message.sig], message.payload_2.reward, message.payload_2.boost || 0, false, [228, 72, 186]);
-                } else if (message.msg._hash === 'broadcast|work|peer_hash_validation') {
-                    createRecoilSubParticle(sessions[message.sig], message.payload_3.hash);
-                } else {
-                    createSubParticle(sessions[message.sig]);
-                }
+            if (!isValidMessage(msg)) {
+                throw new Error('Invalid message format');
             }
 
+            msg._timestamp = new Date();
+            const responseMessage = new ResponseMessage(msg);
+            responseMessage.msg._hash = responseMessage.hash();
+
+            if (responseMessage.sig) {
+                handleIncomingMessage(responseMessage);
+            }
         } catch (error) {
-            console.error('Error parsing message:', error);
+            console.error('Error parsing message:', {
+                error,
+                data: event.data,
+                time: new Date(),
+            });
         }
     };
 
-    socket.onerror = function(error) {
-        console.error('WebSocket error:', error);
+    socket.onerror = (error) => {
+        console.error('WebSocket error:', {
+            error,
+            url: wsUrl,
+            time: new Date(),
+        });
     };
 
-    socket.onclose = function() {
+    socket.onclose = () => {
         clearInterval(stayAlive);
-        setTimeout(connectWebSocket, 1000);
+        const timeout = Math.min(1000 * 2 ** reconnectAttempts, CONFIG.MAX_RECONNECT_DELAY);
+        setTimeout(connectWebSocket, timeout);
+        reconnectAttempts++;
     };
 }
 
+// Function to validate incoming messages
+function isValidMessage(msg) {
+    return msg && typeof msg === 'object' && 'topic' in msg && 'event' in msg && 'payload' in msg;
+}
+
+// Function to handle incoming messages and update visualization
+function handleIncomingMessage(message) {
+    const currTime = millis();
+    const sessionSig = message.sig;
+
+    if (!sessions.has(sessionSig)) {
+        // Create a new session with a main particle
+        const x = random(width);
+        const y = random(height);
+        const color = [random(205, 255), random(205, 255), random(205, 255)];
+
+        const mainParticle = new Particle(x, y, 10, color);
+        mainParticle.sig = sessionSig;
+        sessions.set(sessionSig, {
+            particle: mainParticle,
+            subParticles: [],
+            lastMessageTime: currTime,
+        });
+        particles.push(mainParticle);
+    } else {
+        // Update the session's last message time
+        const session = sessions.get(sessionSig);
+        session.lastMessageTime = currTime;
+    }
+
+    // Handle different types of messages to create visual effects
+    const session = sessions.get(sessionSig);
+    switch (message.msg._hash) {
+        case 'broadcast|valid|CLAIMING':
+            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, true, [0, 255, 100]);
+            break;
+        case 'broadcast|valid|RUNNING':
+            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, false, [0, 150, 255]);
+            break;
+        case 'broadcast|valid|EXPIRED':
+            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, true, [139, 0, 0]);
+            break;
+        case 'broadcast|valid|SLASHING':
+            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, true, [255, 215, 0]);
+            break;
+        case 'broadcast|valid|MINING':
+            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, false, [193, 72, 228]);
+            break;
+        case 'broadcast|valid|JOINING':
+            createExplosion(session, message.payload2.reward, message.payload2.boost || 0, false, [228, 72, 186]);
+            break;
+        case 'broadcast|work|peer_hash_validation':
+            createRecoilSubParticle(session, message.payload3.hash);
+            break;
+        default:
+            createSubParticle(session);
+    }
+}
+
+// Main p5.js draw loop
 function draw() {
     background(0);
     translate(-width / 2, -height / 2);
 
     const currTime = millis();
 
-    particles = particles.filter(particle => {
+    // Update and display main particles
+    particles = particles.filter((particle) => {
         particle.update();
         particle.display();
 
-        const session = sessions[particle.sig];
+        const session = sessions.get(particle.sig);
         if (session) {
-            if (currTime - session.lastMessageTime > TIMEOUT_DURATION) {
+            // Remove session if it has timed out
+            if (currTime - session.lastMessageTime > CONFIG.TIMEOUT_DURATION) {
                 createExplosion(session, 500e6, 0, true, [255, 255, 255]);
-                delete sessions[particle.sig];
+                sessions.delete(particle.sig);
                 return false;
             }
         }
 
         if (particle.alpha <= 0) {
-            if (session) {
-                delete sessions[particle.sig];
-            }
+            sessions.delete(particle.sig);
             return false;
         }
         return true;
     });
 
-    Object.values(sessions).forEach(session => {
-        session.subParticles = session.subParticles.filter(subParticle => {
+    // Update and display subparticles
+    for (const session of sessions.values()) {
+        session.subParticles = session.subParticles.filter((subParticle) => {
             subParticle.update();
             subParticle.display();
             return subParticle.alpha > 0;
         });
-    });
+    }
 }
 
+// Class representing a particle
 class Particle {
     constructor(x, y, size, color, isSubParticle = false) {
         this.pos = createVector(x, y);
@@ -244,15 +307,19 @@ class Particle {
         this.isSubParticle = isSubParticle;
         this.sig = null;
 
-        this.vel = isSubParticle ? p5.Vector.random2D().mult(random(0.5, 2)) : createVector(0, 0);
+        this.vel = isSubParticle
+            ? p5.Vector.random2D().mult(random(0.5, 2))
+            : createVector(0, 0);
         this.acc = createVector(0, 0);
         this.maxSpeed = 5;
     }
 
+    // Applies a force to the particle
     applyForce(force) {
         this.acc.add(force);
     }
 
+    // Updates the particle's position and alpha
     update() {
         if (this.isSubParticle) {
             this.alpha -= 4;
@@ -270,8 +337,9 @@ class Particle {
         }
     }
 
+    // Keeps the particle within canvas boundaries
     checkEdges() {
-        let radius = this.size / 2;
+        const radius = this.size / 2;
 
         if (this.pos.x - radius <= 0 || this.pos.x + radius >= width) {
             this.vel.x *= -1;
@@ -284,6 +352,7 @@ class Particle {
         }
     }
 
+    // Renders the particle
     display() {
         push();
         noStroke();
@@ -294,55 +363,75 @@ class Particle {
     }
 }
 
+// Creates a subparticle and applies recoil to the parent particle
 function createSubParticle(session) {
-    let parent = session.particle;
-    let subParticleSize = 5;
-    let color = [255 - random(50), 255 - random(50), 255 - random(50)];
+    const parent = session.particle;
+    const subParticleSize = 5;
+    const color = [random(205, 255), random(205, 255), random(205, 255)];
 
-    let subParticle = new Particle(parent.pos.x, parent.pos.y, subParticleSize, color, true);
+    const subParticle = new Particle(
+        parent.pos.x,
+        parent.pos.y,
+        subParticleSize,
+        color,
+        true
+    );
     session.subParticles.push(subParticle);
 
-    let recoilForce = subParticle.vel.copy().mult(-1);
-    recoilForce.div(10);
+    const recoilForce = subParticle.vel.copy().mult(-0.1);
     parent.applyForce(recoilForce);
 
     parent.color = color;
 }
 
+// Creates a recoil subparticle with properties based on hash value
 function createRecoilSubParticle(session, hashValue) {
-    let parent = session.particle;
+    const parent = session.particle;
 
-    let subParticleSize = map(hashValue, 0, 700, 3, 9);
-    let subParticleSpeed = map(hashValue, 0, 700, 0.5, 3);
-    let color = [255 - random(50), 255 - random(50), 255 - random(50)];
+    const subParticleSize = map(hashValue, 0, 700, 3, 9);
+    const subParticleSpeed = map(hashValue, 0, 700, 0.5, 3);
+    const color = [random(205, 255), random(205, 255), random(205, 255)];
 
-    let subParticle = new Particle(parent.pos.x, parent.pos.y, subParticleSize, color, true);
+    const subParticle = new Particle(
+        parent.pos.x,
+        parent.pos.y,
+        subParticleSize,
+        color,
+        true
+    );
     subParticle.vel.setMag(subParticleSpeed);
     session.subParticles.push(subParticle);
 
-    let recoilForce = subParticle.vel.copy().mult(-1);
-    recoilForce.div(10);
+    const recoilForce = subParticle.vel.copy().mult(-0.1);
     parent.applyForce(recoilForce);
 
     parent.color = color;
-
     parent.size = map(hashValue, 0, 700, 9, 18);
 }
 
-function createExplosion(session, reward, boost, shouldDie, color) {
-    let parent = session.particle;
-    let numParticles = shouldDie
+// Generates an explosion effect with multiple subparticles
+function createExplosion(session, reward, boost, shouldDie, baseColor) {
+    const parent = session.particle;
+    const numParticles = shouldDie
         ? map(reward, 100e6, 1e9, 10, 100)
         : map(reward, 100e6, 1e9, 5, 20);
 
-    let explosionSpeed = map(boost, 0, 400, 1, 5);
+    const explosionSpeed = map(boost, 0, 400, 1, 5);
 
     for (let i = 0; i < numParticles; i++) {
-        let subParticleSize = map(boost, 0, 400, 7, 16);
+        const subParticleSize = map(boost, 0, 400, 7, 16);
 
-        let subParticleColor = color.map(c => constrain(c + random(-20, 20), 0, 255));
+        const subParticleColor = baseColor.map((c) =>
+            constrain(c + random(-20, 20), 0, 255)
+        );
 
-        let subParticle = new Particle(parent.pos.x, parent.pos.y, subParticleSize, subParticleColor, true);
+        const subParticle = new Particle(
+            parent.pos.x,
+            parent.pos.y,
+            subParticleSize,
+            subParticleColor,
+            true
+        );
 
         subParticle.vel.setMag(explosionSpeed);
         session.subParticles.push(subParticle);
@@ -355,6 +444,7 @@ function createExplosion(session, reward, boost, shouldDie, color) {
     }
 }
 
+// Adjust canvas size when window is resized
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
