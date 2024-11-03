@@ -8,14 +8,13 @@ const CONFIG = {
     VSN: '1.0.0',
     HEARTBEAT_INTERVAL: 30000, // 30 seconds
     MAX_RECONNECT_DELAY: 30000, // 30 seconds
+    API_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrcWp2d3h6c3hpbG5zbXBuZ21jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjYwODExMjMsImV4cCI6MjA0MTY1NzEyM30.u9gf6lU2fBmf0aiC7SYH4vVeWMRnGRu4ZZ7xOGl-XuI'
 };
-
-const apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrcWp2d3h6c3hpbG5zbXBuZ21jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjYwODExMjMsImV4cCI6MjA0MTY1NzEyM30.u9gf6lU2fBmf0aiC7SYH4vVeWMRnGRu4ZZ7xOGl-XuI';
 
 // Helper function to get the WebSocket URL with query parameters
 function getWebSocketUrl() {
     const params = new URLSearchParams({
-        apikey: apiKey,
+        apikey: CONFIG.API_KEY,
         eventsPerSecond: CONFIG.EVENTS_PER_SECOND,
         vsn: CONFIG.VSN,
     });
@@ -146,7 +145,7 @@ function setup() {
 function connectWebSocket() {
     const wsUrl = getWebSocketUrl();
     socket = new WebSocket(wsUrl);
-    const messageBuilder = new MessageBuilder(apiKey);
+    const messageBuilder = new MessageBuilder(CONFIG.API_KEY);
 
     // Keep the connection alive with heartbeats
     const stayAlive = setInterval(() => {
