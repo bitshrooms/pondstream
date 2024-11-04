@@ -27,6 +27,19 @@ let particles = [];
 let sessions = new Map();
 let reconnectAttempts = 0;
 let isTabVisible = true;
+let startTime = Date.now();
+
+let stats = {
+    claimed: 0,
+    slashed: 0,
+    expired: 0,
+    hashes: 0,
+    max: {
+        reward: 0,//1e9,
+        boost: 0,//400,
+        hash: 0,//700
+    }
+}
 
 const queryString = window.location.search;
 const urlParams = new URLSearchParams(queryString);
@@ -34,6 +47,7 @@ const wallet = {
     key: urlParams.get('wallet'),
     sig: null
 }
+
 // Class to manage WebSocket messages
 class MessageBuilder {
     constructor(apiKey) {
@@ -211,12 +225,29 @@ function isValidMessage(msg) {
     return msg && typeof msg === 'object' && 'topic' in msg && 'event' in msg && 'payload' in msg;
 }
 
+function numberString(num) {
+    return num.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function logTime() {
+    let seconds = (Date.now() - startTime) / 1000;
+    if (seconds < 60) {
+        console.log(`⛏️⛏️⛏️ ${(seconds).toFixed(0)} seconds ⛏️⛏️⛏️`);
+    } else {
+        console.log(`⛏️⛏️⛏️ ${(seconds / 60).toFixed(1)} minutes ⛏️⛏️⛏️`);
+    }
+}
+
 // Function to handle incoming messages and update visualization
 function handleIncomingMessage(message) {
     const sessionSig = message.sig;
 
     if (wallet.key && sessionSig && message.key == wallet.key) {
-        wallet.sig = sessionSig;
+        if (wallet.sig != sessionSig) {
+            let particle = sessions.get(wallet.sig)?.particle;
+            particle && (particle.alpha = 0);
+            wallet.sig = sessionSig;
+        }
     }
 
     if (!sessions.has(sessionSig)) {
@@ -227,8 +258,8 @@ function handleIncomingMessage(message) {
 
         const mainParticle = new Particle(x, y, 10, color);
         mainParticle.sig = sessionSig;
+        message.key && (mainParticle.wallet = message.key);
         if (sessionSig == wallet.sig) {
-            mainParticle.wallet = wallet.key;
             mainParticle.size = 20;
         }
         sessions.set(sessionSig, {
@@ -240,21 +271,31 @@ function handleIncomingMessage(message) {
         // Update the session's last message time
         const session = sessions.get(sessionSig);
         session.particle.alpha = 255;
+        if (message.key && !session.particle.wallet) {
+            session.particle.wallet = message.key;
+        }
     }
 
     // Handle different types of messages to create visual effects
     const session = sessions.get(sessionSig);
     switch (message.msg._hash) {
         case 'broadcast|valid|CLAIMING':
+            stats.claimed += message.reward;  
+            message.reward > stats.max.reward && (stats.max.reward = message.reward);
+            message.boost > stats.max.boost && (stats.max.boost = message.boost); 
             createExplosion(session, message.reward, message.boost, true, [0, 255, 100]);
             break;
         case 'broadcast|valid|RUNNING':
+            message.reward > stats.max.reward && (stats.max.reward = message.reward);
+            message.boost > stats.max.boost && (stats.max.boost = message.boost);
             createExplosion(session, message.reward, message.boost, false, [0, 150, 255]);
             break;
         case 'broadcast|valid|EXPIRED':
+            stats.expired += message.reward;
             createExplosion(session, message.reward, message.boost, true, [139, 0, 0]);
             break;
         case 'broadcast|valid|SLASHING':
+            stats.slashed += message.reward;
             createExplosion(session, message.reward, message.boost, true, [255, 215, 0]);
             break;
         case 'broadcast|valid|MINING':
@@ -264,10 +305,26 @@ function handleIncomingMessage(message) {
             createExplosion(session, message.reward, message.boost, false, [228, 72, 186]);
             break;
         case 'broadcast|work|peer_hash_validation':
+            session.particle.hashes += 1;
+            stats.hashes += 1;
+            message.hashValue > stats.max.hash && (stats.max.hash = message.hashValue);
             createRecoilSubParticle(session, message.hashValue);
             break;
         default:
             createSubParticle(session);
+    }
+
+    if (wallet.sig == sessionSig) {
+        if (message.key && wallet.key != message.key) {
+            wallet.key = message.key;
+        }
+        console.log(message.msg._hash);
+        session.particle.wallet && console.log(`wallet: ${session.particle.wallet}`);
+        session.particle.reward && console.log(`reward: ${numberString(session.particle.reward)}`);
+        session.particle.boost && console.log(`boost: ${session.particle.boost}`)
+        session.particle.hashes && console.log(`hashes: ${session.particle.hashes}`)
+        console.log(message.msg);
+        logTime();
     }
 }
 
@@ -312,6 +369,9 @@ class Particle {
         this.isSubParticle = isSubParticle;
         this.sig = null;
         this.wallet = null;
+        this.reward = 0;
+        this.hashes = 0;
+        this.boost = 0;
 
         this.vel = isSubParticle
             ? p5.Vector.random2D().mult(random(0.5, 2))
@@ -330,7 +390,11 @@ class Particle {
         if (this.isSubParticle) {
             this.alpha -= 6;
         } else {
-            this.alpha -= 0.1;
+            if (this.sig != wallet.sig) {
+                this.alpha -= 0.05;
+            } else {
+                this.alpha -= 0.01;
+            }
             this.vel.limit(this.maxSpeed);
         }
 
@@ -366,7 +430,7 @@ class Particle {
         fill(...this.color, this.alpha);
         translate(this.pos.x, this.pos.y);
 
-        if (this.wallet) {
+        if (wallet.sig && wallet.sig == this.sig) {
             rectMode(CENTER);
             rect(0, 0, this.size, this.size);
         } else {
@@ -402,8 +466,8 @@ function createSubParticle(session) {
 function createRecoilSubParticle(session, hashValue) {
     const parent = session.particle;
 
-    const subParticleSize = map(hashValue, 0, 700, 3, 9);
-    const subParticleSpeed = map(hashValue, 0, 700, 0.5, 3);
+    const subParticleSize = map(hashValue, 0, stats.max.hash, 3, 9);
+    const subParticleSpeed = map(hashValue, 0, stats.max.hash, 0.5, 3);
     const color = [random(205, 255), random(205, 255), random(205, 255)];
 
     const subParticle = new Particle(
@@ -420,9 +484,9 @@ function createRecoilSubParticle(session, hashValue) {
     parent.applyForce(recoilForce);
 
     parent.color = color;
-    parent.size = map(hashValue, 0, 700, 9, 18);
+    parent.size = map(hashValue, 0, stats.max.hash, 9, 18);
 
-    if (parent.wallet) {
+    if (parent.sig == wallet.sig) {
         parent.size += 20;
     }
 }
@@ -430,14 +494,16 @@ function createRecoilSubParticle(session, hashValue) {
 // Generates an explosion effect with multiple subparticles
 function createExplosion(session, reward, boost, shouldDie, baseColor) {
     const parent = session.particle;
+    parent.reward = reward;
+    boost > parent.boost && (parent.boost = boost);
     const numParticles = shouldDie
-        ? map(reward, 100e6, 3e9, 10, 40)
-        : map(reward, 100e6, 3e9, 5, 20);
+        ? map(reward, 100e6, stats.max.reward, 10, 40)
+        : map(reward, 100e6, stats.max.reward, 5, 20);
 
-    const explosionSpeed = map(boost, 0, 400, 1, 5);
+    const explosionSpeed = map(boost, 0, stats.max.boost, 1, 5);
 
     for (let i = 0; i < numParticles; i++) {
-        const subParticleSize = map(boost, 0, 400, 7, 16);
+        const subParticleSize = map(boost, 0, stats.max.boost, 7, 16);
 
         const subParticleColor = baseColor.map((c) =>
             constrain(c + random(-20, 20), 0, 255)
@@ -474,3 +540,61 @@ function windowResized() {
 document.addEventListener('visibilitychange', function() {
     isTabVisible = !document.hidden;
 });
+
+function mouseClicked() {
+    let mouse = createVector(mouseX, mouseY);
+    let found = false;
+
+    for (let particle of particles) {
+        let _dist = p5.Vector.dist(mouse, particle.pos);
+        if (_dist < particle.size / 2) {
+            if (wallet.sig != particle.sig) {
+                wallet.key = particle.wallet;
+                let w = sessions.get(wallet.sig)?.particle;
+                w && (w.size = constrain(w.size - 20, 10, 38));
+            } 
+            particle.size = constrain(particle.size + 20, 10, 38);
+            wallet.sig = particle.sig;
+
+            if (particle.wallet) {
+                console.log(`following wallet: ${particle.wallet}`)
+            } else {
+                console.log(`following sig: ${particle.sig}`)
+            }
+
+            found = true;
+
+            particle.reward && console.log('reward: ', numberString(particle.reward));
+            particle.boost && console.log('boost: ', particle.boost);
+            particle.hashes && console.log('hashes: ', particle.hashes);
+            logTime();
+            break;
+        }
+    }
+
+    if (!found) {
+        if (wallet.sig) {
+            let particle = sessions.get(wallet.sig)?.particle;
+            if (particle) {
+                particle.size = constrain(particle.size - 20, 10, 38);
+            }
+        }
+
+        wallet.key = null;
+        wallet.sig = null;
+    }
+}
+
+setInterval(() => {
+    console.log(`total unclaimed: ${numberString(particles.reduce((curr, nex) => curr + nex.reward, 0) - stats.claimed)}`);
+    stats.claimed && console.log(`total claimed: ${numberString(stats.claimed)}`); 
+    stats.slashed && console.log(`total slashed: ${numberString(stats.slashed)}`); 
+    stats.expired && console.log(`total expired: ${numberString(stats.expired)}`); 
+    stats.hashes && console.log(`total hashes: ${numberString(stats.hashes)}`);
+    console.log(`max boost: ${stats.max.boost}`);
+    console.log(`max hash: ${stats.max.hash}`);
+    console.log(`max reward: ${numberString(stats.max.reward)}`);
+    console.log(`total sessions: ${particles.length}`);
+    console.log(`total sessions over 100m: ${particles.filter(x => x.reward >= 100e6).length}`);
+    logTime();
+}, 1000 * 30);
