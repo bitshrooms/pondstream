@@ -229,6 +229,7 @@ function handleIncomingMessage(message) {
         mainParticle.sig = sessionSig;
         if (sessionSig == wallet.sig) {
             mainParticle.wallet = wallet.key;
+            mainParticle.size = 20;
         }
         sessions.set(sessionSig, {
             particle: mainParticle,
@@ -420,6 +421,10 @@ function createRecoilSubParticle(session, hashValue) {
 
     parent.color = color;
     parent.size = map(hashValue, 0, 700, 9, 18);
+
+    if (parent.wallet) {
+        parent.size += 20;
+    }
 }
 
 // Generates an explosion effect with multiple subparticles
