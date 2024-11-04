@@ -145,6 +145,7 @@ class ResponseMessage {
 // Initialize p5.js setup
 function setup() {
     createCanvas(windowWidth, windowHeight, WEBGL);
+    // frameRate(60);
     connectWebSocket();
 }
 
@@ -212,7 +213,6 @@ function isValidMessage(msg) {
 
 // Function to handle incoming messages and update visualization
 function handleIncomingMessage(message) {
-    const currTime = Date.now();
     const sessionSig = message.sig;
 
     if (wallet.key && sessionSig && message.key == wallet.key) {
@@ -232,14 +232,13 @@ function handleIncomingMessage(message) {
         }
         sessions.set(sessionSig, {
             particle: mainParticle,
-            subParticles: [],
-            lastMessageTime: currTime,
+            subParticles: []
         });
         particles.push(mainParticle);
     } else {
         // Update the session's last message time
         const session = sessions.get(sessionSig);
-        session.lastMessageTime = currTime;
+        session.particle.alpha = 255;
     }
 
     // Handle different types of messages to create visual effects
@@ -278,22 +277,12 @@ function draw() {
         translate(-width / 2, -height / 2);
     }
 
-    const currTime = Date.now();
-
     // Update particles and sessions regardless of visibility
     particles = particles.filter((particle) => {
         particle.update();
         isTabVisible && particle.display();
 
         const session = sessions.get(particle.sig);
-        if (session) {
-            // Remove session if it has timed out
-            if (currTime - session.lastMessageTime > CONFIG.TIMEOUT_DURATION) {
-                createExplosion(session, 500e6, 0, true, [255, 255, 255]);
-                sessions.delete(particle.sig);
-                return false;
-            }
-        }
 
         if (particle.alpha <= 0 && session.subParticles.filter(subParticle => subParticle.alpha > 0).length == 0) {
             sessions.delete(particle.sig);
@@ -338,8 +327,9 @@ class Particle {
     // Updates the particle's position and alpha
     update() {
         if (this.isSubParticle) {
-            this.alpha -= 4;
+            this.alpha -= 6;
         } else {
+            this.alpha -= 0.1;
             this.vel.limit(this.maxSpeed);
         }
 
@@ -436,8 +426,8 @@ function createRecoilSubParticle(session, hashValue) {
 function createExplosion(session, reward, boost, shouldDie, baseColor) {
     const parent = session.particle;
     const numParticles = shouldDie
-        ? map(reward, 100e6, 1e9, 10, 100)
-        : map(reward, 100e6, 1e9, 5, 20);
+        ? map(reward, 100e6, 3e9, 10, 40)
+        : map(reward, 100e6, 3e9, 5, 20);
 
     const explosionSpeed = map(boost, 0, 400, 1, 5);
 
