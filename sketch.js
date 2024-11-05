@@ -69,6 +69,7 @@ function loadColors() {
     let storedColors = localStorage.getItem('particleColors');
     if (storedColors) {
         storedColors = JSON.parse(storedColors);
+        storedColors.mainParticle = storedColors.events.HASH.slice();
         defaultColors = storedColors;
     }
 }
