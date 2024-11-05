@@ -601,8 +601,18 @@ function mouseClicked() {
                 particle.size = constrain(particle.size - 20, 10, 38);
             }
         }
-        wallet.key = null;
-        wallet.sig = null;
+        if (urlParams.get('wallet')) {
+            wallet.key = urlParams.get('wallet');
+            let particle = particles.find(x => x.wallet == wallet.key);
+            if (particle) {
+                wallet.sig = particle.sig;
+                particle.size = constrain(particle.size + 20, 10, 38);
+                console.log(`following wallet: ${particle.wallet}`)
+            }
+        } else {
+            wallet.key = null;
+            wallet.sig = null;
+        }
     }
 }
 
