@@ -310,6 +310,8 @@ function handleIncomingMessage(message) {
             message.hashValue > stats.max.hash && (stats.max.hash = message.hashValue);
             createRecoilSubParticle(session, message.hashValue);
             break;
+        case 'broadcast|claim':
+            session.particle.color = [0, 255, 100];
         default:
             createSubParticle(session);
     }
