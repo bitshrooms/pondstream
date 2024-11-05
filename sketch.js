@@ -534,8 +534,8 @@ function createExplosion(session, reward, boost, shouldDie, baseColor) {
     parent.reward = reward;
     boost > parent.boost && (parent.boost = boost);
     const numParticles = shouldDie
-        ? map(reward, 100e6, stats.max.reward, 10, 40)
-        : map(reward, 100e6, stats.max.reward, 5, 20);
+        ? map(reward, 0, stats.max.reward, 10, 40)
+        : map(reward, 0, stats.max.reward, 5, 20);
     const explosionSpeed = map(boost, 0, stats.max.boost, 1, 5);
     for (let i = 0; i < numParticles; i++) {
         const subParticleSize = map(boost, 0, stats.max.boost, 7, 16);
