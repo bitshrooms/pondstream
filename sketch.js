@@ -491,7 +491,7 @@ class Particle {
 function createSubParticle(session) {
     const parent = session.particle;
     const subParticleSize = 5;
-    const color = [random(205, 255), random(205, 255), random(205, 255)];
+    const color = [...parent.color];
     const subParticle = new Particle(
         parent.pos.x,
         parent.pos.y,
