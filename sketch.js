@@ -429,14 +429,7 @@ class Particle {
         noStroke();
         fill(...this.color, this.alpha);
         translate(this.pos.x, this.pos.y);
-
-        if (wallet.sig && wallet.sig == this.sig) {
-            rectMode(CENTER);
-            rect(0, 0, this.size, this.size);
-        } else {
-            ellipse(0, 0, this.size);
-        }
-
+        ellipse(0, 0, this.size);
         pop();
     }
 }
