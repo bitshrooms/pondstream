@@ -1,17 +1,15 @@
 'use strict';
 
-// Configuration Object
 const CONFIG = {
-    TIMEOUT_DURATION: 300000, // 5 minutes
+    TIMEOUT_DURATION: 300000,
     WS_URL: 'wss://vkqjvwxzsxilnsmpngmc.supabase.co/realtime/v1/websocket',
     EVENTS_PER_SECOND: 5,
     VSN: '1.0.0',
-    HEARTBEAT_INTERVAL: 30000, // 30 seconds
-    MAX_RECONNECT_DELAY: 30000, // 30 seconds
+    HEARTBEAT_INTERVAL: 30000,
+    MAX_RECONNECT_DELAY: 30000,
     API_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrcWp2d3h6c3hpbG5zbXBuZ21jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjYwODExMjMsImV4cCI6MjA0MTY1NzEyM30.u9gf6lU2fBmf0aiC7SYH4vVeWMRnGRu4ZZ7xOGl-XuI'
 };
 
-// Helper function to get the WebSocket URL with query parameters
 function getWebSocketUrl() {
     const params = new URLSearchParams({
         apikey: CONFIG.API_KEY,
@@ -21,7 +19,6 @@ function getWebSocketUrl() {
     return `${CONFIG.WS_URL}?${params.toString()}`;
 }
 
-// Global Variables
 let socket;
 let particles = [];
 let sessions = new Map();
@@ -35,9 +32,9 @@ let stats = {
     expired: 0,
     hashes: 0,
     max: {
-        reward: 0,//1e9,
-        boost: 0,//400,
-        hash: 0,//700
+        reward: 0,
+        boost: 0,
+        hash: 0,
     }
 }
 
@@ -48,7 +45,38 @@ const wallet = {
     sig: null
 }
 
-// Class to manage WebSocket messages
+let showHUD = false;
+let bgColorPicker, eventColorPickers = {};
+let resetButton;
+
+let colorConfig = () => ({
+    background: [0, 0, 0],
+    mainParticle: [255, 255, 255],
+    events: {
+        HASH: [255, 255, 255],
+        CLAIMING: [0, 255, 100],
+        RUNNING: [0, 150, 255],
+        EXPIRED: [139, 0, 0],
+        SLASHING: [255, 215, 0],
+        MINING: [193, 72, 228],
+        JOINING: [228, 72, 186]
+    }
+})
+
+let defaultColors = colorConfig();
+
+function loadColors() {
+    let storedColors = localStorage.getItem('particleColors');
+    if (storedColors) {
+        storedColors = JSON.parse(storedColors);
+        defaultColors = storedColors;
+    }
+}
+
+function saveColors() {
+    localStorage.setItem('particleColors', JSON.stringify(defaultColors));
+}
+
 class MessageBuilder {
     constructor(apiKey) {
         this.apiKey = apiKey;
@@ -121,7 +149,6 @@ class MessageBuilder {
     }
 }
 
-// Class to parse and handle incoming messages
 class ResponseMessage {
     constructor(msg) {
         this.msg = msg;
@@ -156,42 +183,76 @@ class ResponseMessage {
     }
 }
 
-// Initialize p5.js setup
 function setup() {
     createCanvas(windowWidth, windowHeight, WEBGL);
-    // frameRate(60);
+    loadColors();
+    bgColorPicker = createColorPicker(color(...defaultColors.background));
+    bgColorPicker.position(10, 10);
+    bgColorPicker.hide();
+    bgColorPicker.input(() => {
+        defaultColors.background = [bgColorPicker.color().levels[0], bgColorPicker.color().levels[1], bgColorPicker.color().levels[2]];
+        saveColors();
+    });
+    bgColorPicker.attribute('title', 'Background');
+    bgColorPicker.style('background-color', `transparent`);
+    bgColorPicker.style('border', `transparent`);
+    let yOffset = 40;
+    for (let eventName in defaultColors.events) {
+        eventColorPickers[eventName] = createColorPicker(color(...defaultColors.events[eventName]));
+        eventColorPickers[eventName].position(10, yOffset);
+        eventColorPickers[eventName].hide();
+        eventColorPickers[eventName].input(() => {
+            let col = eventColorPickers[eventName].color();
+            defaultColors.events[eventName] = [col.levels[0], col.levels[1], col.levels[2]];
+            saveColors();
+        });
+        eventColorPickers[eventName].attribute('title', `${eventName}`);
+        eventColorPickers[eventName].style('background-color', `transparent`);
+        eventColorPickers[eventName].style('border', `transparent`);
+        yOffset += 30;
+    }
+    resetButton = createButton('⛏️');
+    resetButton.position(12, yOffset + 4);
+    resetButton.size(46, 22);
+    resetButton.hide();
+    resetButton.mousePressed(resetColors);
+    resetButton.attribute('title', 'Reset to Default Colors');
+    resetButton.style('background-color', '#2b2b2de8');
+    resetButton.style('border', 'none');
     connectWebSocket();
 }
 
-// Function to connect to the WebSocket server
+function resetColors() {
+    defaultColors = colorConfig();
+    bgColorPicker.color(color(...defaultColors.background));
+    for (let eventName in eventColorPickers) {
+        eventColorPickers[eventName].color(color(...defaultColors.events[eventName]));
+    }
+    saveColors();
+}
+
 function connectWebSocket() {
     const wsUrl = getWebSocketUrl();
     socket = new WebSocket(wsUrl);
     const messageBuilder = new MessageBuilder(CONFIG.API_KEY);
-
-    // Keep the connection alive with heartbeats
     const stayAlive = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
             messageBuilder.sendMessages(socket, messageBuilder.rejoinMessages());
         }
     }, CONFIG.HEARTBEAT_INTERVAL);
-
     socket.onopen = () => {
         reconnectAttempts = 0;
         messageBuilder.sendMessages(socket, messageBuilder.joinMessages());
     };
-
     socket.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
             if (!isValidMessage(msg)) {
                 throw new Error('Invalid message format');
             }
-
             msg._timestamp = new Date();
             const responseMessage = new ResponseMessage(msg);
             responseMessage.msg._hash = responseMessage.hash();
-
             if (responseMessage.sig) {
                 handleIncomingMessage(responseMessage);
             }
@@ -203,7 +264,6 @@ function connectWebSocket() {
             });
         }
     };
-
     socket.onerror = (error) => {
         console.error('WebSocket error:', {
             error,
@@ -211,7 +271,6 @@ function connectWebSocket() {
             time: new Date(),
         });
     };
-
     socket.onclose = () => {
         clearInterval(stayAlive);
         const timeout = Math.min(1000 * 2 ** reconnectAttempts, CONFIG.MAX_RECONNECT_DELAY);
@@ -220,7 +279,6 @@ function connectWebSocket() {
     };
 }
 
-// Function to validate incoming messages
 function isValidMessage(msg) {
     return msg && typeof msg === 'object' && 'topic' in msg && 'event' in msg && 'payload' in msg;
 }
@@ -238,10 +296,8 @@ function logTime() {
     }
 }
 
-// Function to handle incoming messages and update visualization
 function handleIncomingMessage(message) {
     const sessionSig = message.sig;
-
     if (wallet.key && sessionSig && message.key == wallet.key) {
         if (wallet.sig != sessionSig) {
             let particle = sessions.get(wallet.sig)?.particle;
@@ -249,13 +305,10 @@ function handleIncomingMessage(message) {
             wallet.sig = sessionSig;
         }
     }
-
     if (!sessions.has(sessionSig)) {
-        // Create a new session with a main particle
         const x = random(width);
         const y = random(height);
-        const color = [random(205, 255), random(205, 255), random(205, 255)];
-
+        const color = defaultColors.mainParticle.slice();
         const mainParticle = new Particle(x, y, 10, color);
         mainParticle.sig = sessionSig;
         message.key && (mainParticle.wallet = message.key);
@@ -268,54 +321,57 @@ function handleIncomingMessage(message) {
         });
         particles.push(mainParticle);
     } else {
-        // Update the session's last message time
         const session = sessions.get(sessionSig);
         session.particle.alpha = 255;
         if (message.key && !session.particle.wallet) {
             session.particle.wallet = message.key;
         }
     }
-
-    // Handle different types of messages to create visual effects
     const session = sessions.get(sessionSig);
     switch (message.msg._hash) {
         case 'broadcast|valid|CLAIMING':
-            stats.claimed += message.reward;  
+            stats.claimed += message.reward;
             message.reward > stats.max.reward && (stats.max.reward = message.reward);
-            message.boost > stats.max.boost && (stats.max.boost = message.boost); 
-            createExplosion(session, message.reward, message.boost, true, [0, 255, 100]);
+            message.boost > stats.max.boost && (stats.max.boost = message.boost);
+            let claimingColor = defaultColors.events['CLAIMING'].slice();
+            createExplosion(session, message.reward, message.boost, true, claimingColor);
             break;
         case 'broadcast|valid|RUNNING':
             message.reward > stats.max.reward && (stats.max.reward = message.reward);
             message.boost > stats.max.boost && (stats.max.boost = message.boost);
-            createExplosion(session, message.reward, message.boost, false, [0, 150, 255]);
+            let runningColor = defaultColors.events['RUNNING'].slice();
+            createExplosion(session, message.reward, message.boost, false, runningColor);
             break;
         case 'broadcast|valid|EXPIRED':
             stats.expired += message.reward;
-            createExplosion(session, message.reward, message.boost, true, [139, 0, 0]);
+            let expiredColor = defaultColors.events['EXPIRED'].slice();
+            createExplosion(session, message.reward, message.boost, true, expiredColor);
             break;
         case 'broadcast|valid|SLASHING':
             stats.slashed += message.reward;
-            createExplosion(session, message.reward, message.boost, true, [255, 215, 0]);
+            let slashingColor = defaultColors.events['SLASHING'].slice();
+            createExplosion(session, message.reward, message.boost, true, slashingColor);
             break;
         case 'broadcast|valid|MINING':
-            createExplosion(session, message.reward, message.boost, false, [193, 72, 228]);
+            let miningColor = defaultColors.events['MINING'].slice();
+            createExplosion(session, message.reward, message.boost, false, miningColor);
             break;
         case 'broadcast|valid|JOINING':
-            createExplosion(session, message.reward, message.boost, false, [228, 72, 186]);
+            let joiningColor = defaultColors.events['JOINING'].slice();
+            createExplosion(session, message.reward, message.boost, false, joiningColor);
             break;
         case 'broadcast|work|peer_hash_validation':
             session.particle.hashes += 1;
             stats.hashes += 1;
             message.hashValue > stats.max.hash && (stats.max.hash = message.hashValue);
-            createRecoilSubParticle(session, message.hashValue);
+            let hashValidationColor = defaultColors.events['HASH'].slice();
+            createRecoilSubParticle(session, message.hashValue, hashValidationColor);
             break;
         case 'broadcast|claim':
-            session.particle.color = [0, 255, 100];
+            session.particle.color = defaultColors.events['CLAIMING'].slice();
         default:
             createSubParticle(session);
     }
-
     if (wallet.sig == sessionSig) {
         if (message.key && wallet.key != message.key) {
             wallet.key = message.key;
@@ -330,28 +386,21 @@ function handleIncomingMessage(message) {
     }
 }
 
-// Main p5.js draw loop
 function draw() {
     if (isTabVisible) {
-        background(0);
+        background(...defaultColors.background);
         translate(-width / 2, -height / 2);
     }
-
-    // Update particles and sessions regardless of visibility
     particles = particles.filter((particle) => {
         particle.update();
         isTabVisible && particle.display();
-
         const session = sessions.get(particle.sig);
-
         if (particle.alpha <= 0 && session.subParticles.filter(subParticle => subParticle.alpha > 0).length == 0) {
             sessions.delete(particle.sig);
             return false;
         }
         return true;
     });
-
-    // Update and display subparticles
     for (const session of sessions.values()) {
         session.subParticles = session.subParticles.filter((subParticle) => {
             subParticle.update();
@@ -359,9 +408,21 @@ function draw() {
             return subParticle.alpha > 0;
         });
     }
+    if (showHUD) {
+        bgColorPicker.show();
+        for (let eventName in eventColorPickers) {
+            eventColorPickers[eventName].show();
+        }
+        resetButton.show();
+    } else {
+        bgColorPicker.hide();
+        for (let eventName in eventColorPickers) {
+            eventColorPickers[eventName].hide();
+        }
+        resetButton.hide();
+    }
 }
 
-// Class representing a particle
 class Particle {
     constructor(x, y, size, color, isSubParticle = false) {
         this.pos = createVector(x, y);
@@ -374,7 +435,6 @@ class Particle {
         this.reward = 0;
         this.hashes = 0;
         this.boost = 0;
-
         this.vel = isSubParticle
             ? p5.Vector.random2D().mult(random(0.5, 2))
             : createVector(0, 0);
@@ -382,12 +442,10 @@ class Particle {
         this.maxSpeed = 5;
     }
 
-    // Applies a force to the particle
     applyForce(force) {
         this.acc.add(force);
     }
 
-    // Updates the particle's position and alpha
     update() {
         if (this.isSubParticle) {
             this.alpha -= 6;
@@ -399,49 +457,41 @@ class Particle {
             }
             this.vel.limit(this.maxSpeed);
         }
-
         this.vel.add(this.acc);
         this.pos.add(this.vel);
-
         this.acc.mult(0);
-
         if (!this.isSubParticle) {
             this.checkEdges();
         }
     }
 
-    // Keeps the particle within canvas boundaries
     checkEdges() {
         const radius = this.size / 2;
-
         if (this.pos.x - radius <= 0 || this.pos.x + radius >= width) {
             this.vel.x *= -1;
             this.pos.x = constrain(this.pos.x, radius, width - radius);
         }
-
         if (this.pos.y - radius <= 0 || this.pos.y + radius >= height) {
             this.vel.y *= -1;
             this.pos.y = constrain(this.pos.y, radius, height - radius);
         }
     }
 
-    // Renders the particle
     display() {
         push();
         noStroke();
-        fill(...this.color, this.alpha);
+        let col = this.color;
+        fill(col[0], col[1], col[2], this.alpha);
         translate(this.pos.x, this.pos.y);
         ellipse(0, 0, this.size);
         pop();
     }
 }
 
-// Creates a subparticle and applies recoil to the parent particle
 function createSubParticle(session) {
     const parent = session.particle;
     const subParticleSize = 5;
     const color = [random(205, 255), random(205, 255), random(205, 255)];
-
     const subParticle = new Particle(
         parent.pos.x,
         parent.pos.y,
@@ -450,21 +500,16 @@ function createSubParticle(session) {
         true
     );
     isTabVisible && session.subParticles.push(subParticle);
-
     const recoilForce = subParticle.vel.copy().mult(-0.1);
     parent.applyForce(recoilForce);
-
     parent.color = color;
 }
 
-// Creates a recoil subparticle with properties based on hash value
-function createRecoilSubParticle(session, hashValue) {
+function createRecoilSubParticle(session, hashValue, baseColor) {
     const parent = session.particle;
-
     const subParticleSize = map(hashValue, 0, stats.max.hash, 3, 9);
     const subParticleSpeed = map(hashValue, 0, stats.max.hash, 0.5, 3);
-    const color = [random(205, 255), random(205, 255), random(205, 255)];
-
+    const color = baseColor;
     const subParticle = new Particle(
         parent.pos.x,
         parent.pos.y,
@@ -474,19 +519,15 @@ function createRecoilSubParticle(session, hashValue) {
     );
     subParticle.vel.setMag(subParticleSpeed);
     isTabVisible && session.subParticles.push(subParticle);
-
     const recoilForce = subParticle.vel.copy().mult(-0.1);
     parent.applyForce(recoilForce);
-
     parent.color = color;
     parent.size = map(hashValue, 0, stats.max.hash, 9, 18);
-
     if (parent.sig == wallet.sig) {
         parent.size += 20;
     }
 }
 
-// Generates an explosion effect with multiple subparticles
 function createExplosion(session, reward, boost, shouldDie, baseColor) {
     const parent = session.particle;
     parent.reward = reward;
@@ -494,16 +535,12 @@ function createExplosion(session, reward, boost, shouldDie, baseColor) {
     const numParticles = shouldDie
         ? map(reward, 100e6, stats.max.reward, 10, 40)
         : map(reward, 100e6, stats.max.reward, 5, 20);
-
     const explosionSpeed = map(boost, 0, stats.max.boost, 1, 5);
-
     for (let i = 0; i < numParticles; i++) {
         const subParticleSize = map(boost, 0, stats.max.boost, 7, 16);
-
         const subParticleColor = baseColor.map((c) =>
             constrain(c + random(-20, 20), 0, 255)
         );
-
         const subParticle = new Particle(
             parent.pos.x,
             parent.pos.y,
@@ -511,23 +548,17 @@ function createExplosion(session, reward, boost, shouldDie, baseColor) {
             subParticleColor,
             true
         );
-
         subParticle.vel.setMag(explosionSpeed);
         (isTabVisible || shouldDie) && session.subParticles.push(subParticle);
-
         const recoilForce = subParticle.vel.copy().mult(-0.01);
         parent.applyForce(recoilForce);
     }
-
     parent.color = baseColor;
-
     if (shouldDie) {
         parent.alpha = 0;
     }
 }
 
-
-// Adjust canvas size when window is resized
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
@@ -539,7 +570,6 @@ document.addEventListener('visibilitychange', function() {
 function mouseClicked() {
     let mouse = createVector(mouseX, mouseY);
     let found = false;
-
     for (let particle of particles) {
         let _dist = p5.Vector.dist(mouse, particle.pos);
         if (_dist < particle.size / 2) {
@@ -547,18 +577,15 @@ function mouseClicked() {
                 wallet.key = particle.wallet;
                 let w = sessions.get(wallet.sig)?.particle;
                 w && (w.size = constrain(w.size - 20, 10, 38));
-            } 
+            }
             particle.size = constrain(particle.size + 20, 10, 38);
             wallet.sig = particle.sig;
-
             if (particle.wallet) {
                 console.log(`following wallet: ${particle.wallet}`)
             } else {
                 console.log(`following sig: ${particle.sig}`)
             }
-
             found = true;
-
             particle.reward && console.log('reward: ', numberString(particle.reward));
             particle.boost && console.log('boost: ', particle.boost);
             particle.hashes && console.log('hashes: ', particle.hashes);
@@ -566,7 +593,6 @@ function mouseClicked() {
             break;
         }
     }
-
     if (!found) {
         if (wallet.sig) {
             let particle = sessions.get(wallet.sig)?.particle;
@@ -574,17 +600,22 @@ function mouseClicked() {
                 particle.size = constrain(particle.size - 20, 10, 38);
             }
         }
-
         wallet.key = null;
         wallet.sig = null;
     }
 }
 
+function keyPressed() {
+    if (key === 'c' || key === 'C') {
+        showHUD = !showHUD;
+    }
+}
+
 setInterval(() => {
     console.log(`total unclaimed: ${numberString(particles.reduce((curr, nex) => curr + nex.reward, 0) - stats.claimed)}`);
-    stats.claimed && console.log(`total claimed: ${numberString(stats.claimed)}`); 
-    stats.slashed && console.log(`total slashed: ${numberString(stats.slashed)}`); 
-    stats.expired && console.log(`total expired: ${numberString(stats.expired)}`); 
+    stats.claimed && console.log(`total claimed: ${numberString(stats.claimed)}`);
+    stats.slashed && console.log(`total slashed: ${numberString(stats.slashed)}`);
+    stats.expired && console.log(`total expired: ${numberString(stats.expired)}`);
     stats.hashes && console.log(`total hashes: ${numberString(stats.hashes)}`);
     console.log(`max boost: ${stats.max.boost}`);
     console.log(`max hash: ${stats.max.hash}`);
