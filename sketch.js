@@ -482,6 +482,7 @@ class Particle {
         this.wallet = null;
         this.reward = 0;
         this.hashes = 0;
+        this.hashRate = 0;
         this.boost = 0;
         this.vel = isSubParticle
             ? p5.Vector.random2D().mult(random(0.5, 2))
@@ -554,6 +555,7 @@ function createSubParticle(session) {
 
 function createRecoilSubParticle(session, hashValue, baseColor) {
     const parent = session.particle;
+    parent.hashRate = hashValue;
     const subParticleSize = map(hashValue, 0, stats.max.hash, 3, 9);
     const subParticleSpeed = map(hashValue, 0, stats.max.hash, 0.5, 3);
     const color = baseColor;
@@ -690,7 +692,7 @@ function keyReleased() {
 }
 
 setInterval(() => {
-    console.log(`total unclaimed: ${numberString(particles.reduce((curr, nex) => curr + nex.reward, 0) - stats.claimed)}`);
+    console.log(`total unclaimed: ${numberString(particles.reduce((curr, nex) => curr + nex.reward, 0))}`);
     stats.claimed && console.log(`total claimed: ${numberString(stats.claimed)}`);
     stats.slashed && console.log(`total slashed: ${numberString(stats.slashed)}`);
     stats.expired && console.log(`total expired: ${numberString(stats.expired)}`);
@@ -700,6 +702,14 @@ setInterval(() => {
     console.log(`max reward: ${numberString(stats.max.reward)}`);
     console.log(`total sessions: ${particles.length}`);
     console.log(`total sessions over 100m: ${particles.filter(x => x.reward >= 100e6).length}`);
+
+    let sumHash = particles.reduce((curr, next) => curr + next.hashRate, 0);
+    let sumBoost = particles.reduce((curr, next) => curr + next.boost, 0);
+    let sumReward = particles.reduce((curr, next) => curr + next.reward, 0);
+
+    console.log(`avg boost: ${((sumBoost / particles.length) || 0).toFixed(1)}`);
+    console.log(`avg hash: ${((sumHash / particles.length) || 0).toFixed(1)}`);
+    console.log(`avg reward: ${numberString(((sumReward / particles.length) || 0).toFixed(0))}`);
     logTime();
 }, 1000 * 30);
 
