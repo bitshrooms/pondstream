@@ -692,14 +692,14 @@ function keyReleased() {
 }
 
 setInterval(() => {
-    console.log(`total unclaimed: ${numberString(particles.reduce((curr, nex) => curr + nex.reward, 0))}`);
-    stats.claimed && console.log(`total claimed: ${numberString(stats.claimed)}`);
-    stats.slashed && console.log(`total slashed: ${numberString(stats.slashed)}`);
-    stats.expired && console.log(`total expired: ${numberString(stats.expired)}`);
+    console.log(`total unclaimed: ${numberString(particles.reduce((curr, nex) => curr + nex.reward, 0).toFixed(0))}`);
+    stats.claimed && console.log(`total claimed: ${numberString(stats.claimed.toFixed(0))}`);
+    stats.slashed && console.log(`total slashed: ${numberString(stats.slashed.toFixed(0))}`);
+    stats.expired && console.log(`total expired: ${numberString(stats.expired.toFixed(0))}`);
     stats.hashes && console.log(`total hashes: ${numberString(stats.hashes)}`);
-    console.log(`max boost: ${stats.max.boost}`);
-    console.log(`max hash: ${stats.max.hash}`);
-    console.log(`max reward: ${numberString(stats.max.reward)}`);
+    console.log(`max boost: ${stats.max.boost.toFixed(1)}`);
+    console.log(`max hash: ${stats.max.hash.toFixed(1)}`);
+    console.log(`max reward: ${numberString(stats.max.reward.toFixed(0))}`);
     console.log(`total sessions: ${particles.length}`);
     console.log(`total sessions over 100m: ${particles.filter(x => x.reward >= 100e6).length}`);
 
