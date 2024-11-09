@@ -330,6 +330,10 @@ function handleIncomingMessage(message) {
             let joiningColor = defaultColors.events['JOINING'].slice();
             createExplosion(session, message.reward, message.boost, false, joiningColor);
             break;
+        case 'broadcast|work|peerjoin':
+            let peerJoinColor = defaultColors.events['JOINING'].slice();
+            createExplosion(session, 0, 0, false, peerJoinColor);
+            break;
         case 'broadcast|work|peer_hash_validation':
             session.particle.hashes += 1;
             stats.hashes += 1;
