@@ -86,6 +86,32 @@ function saveColors() {
     localStorage.setItem('particleColors', JSON.stringify(defaultColors));
 }
 
+function resetColors() {
+    defaultColors = colorConfig();
+    bgColorPicker.color(color(...defaultColors.background));
+    for (let eventName in eventColorPickers) {
+        eventColorPickers[eventName].color(color(...defaultColors.events[eventName]));
+    }
+    saveColors();
+}
+
+function isValidMessage(msg) {
+    return msg && typeof msg === 'object' && 'topic' in msg && 'event' in msg && 'payload' in msg;
+}
+
+function numberString(num) {
+    return num.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function logTime() {
+    let seconds = (Date.now() - startTime) / 1000;
+    if (seconds < 60) {
+        console.log(`⛏️⛏️⛏️ ${(seconds).toFixed(0)} seconds ⛏️⛏️⛏️`);
+    } else {
+        console.log(`⛏️⛏️⛏️ ${(seconds / 60).toFixed(1)} minutes ⛏️⛏️⛏️`);
+    }
+}
+
 class MessageBuilder {
     constructor(apiKey) {
         this.apiKey = apiKey;
@@ -192,61 +218,6 @@ class ResponseMessage {
     }
 }
 
-function setup() {
-    createCanvas(windowWidth, windowHeight, WEBGL);
-    loadColors();
-    bgColorPicker = createColorPicker(color(...defaultColors.background));
-    bgColorPicker.position(10, 10);
-    bgColorPicker.hide();
-    bgColorPicker.input(() => {
-        defaultColors.background = [bgColorPicker.color().levels[0], bgColorPicker.color().levels[1], bgColorPicker.color().levels[2]];
-        saveColors();
-    });
-    bgColorPicker.attribute('title', 'Background');
-    bgColorPicker.style('background-color', `transparent`);
-    bgColorPicker.style('border', `transparent`);
-    let yOffset = 40;
-    for (let eventName in defaultColors.events) {
-        if (eventName != 'ROCKET' || (eventName == 'ROCKET' && hasRocket)) {
-            eventColorPickers[eventName] = createColorPicker(color(...defaultColors.events[eventName]));
-            eventColorPickers[eventName].position(10, yOffset);
-            eventColorPickers[eventName].hide();
-            eventColorPickers[eventName].input(() => {
-                let col = eventColorPickers[eventName].color();
-                defaultColors.events[eventName] = [col.levels[0], col.levels[1], col.levels[2]];
-                saveColors();
-            });
-            eventColorPickers[eventName].attribute('title', `${eventName}`);
-            eventColorPickers[eventName].style('background-color', `transparent`);
-            eventColorPickers[eventName].style('border', `transparent`);
-            yOffset += 30;
-        }
-    }
-    resetButton = createButton('⛏️');
-    resetButton.position(12, yOffset + 4);
-    resetButton.size(46, 22);
-    resetButton.hide();
-    resetButton.mousePressed(resetColors);
-    resetButton.attribute('title', 'Reset to Default Colors');
-    resetButton.style('background-color', '#2b2b2de8');
-    resetButton.style('border', 'none');
-    connectWebSocket();
-
-    hasRocket = urlParams.has('rocket');
-    if (hasRocket) {
-        ship = new Ship();
-    }
-}
-
-function resetColors() {
-    defaultColors = colorConfig();
-    bgColorPicker.color(color(...defaultColors.background));
-    for (let eventName in eventColorPickers) {
-        eventColorPickers[eventName].color(color(...defaultColors.events[eventName]));
-    }
-    saveColors();
-}
-
 function connectWebSocket() {
     const wsUrl = getWebSocketUrl();
     socket = new WebSocket(wsUrl);
@@ -293,23 +264,6 @@ function connectWebSocket() {
         setTimeout(connectWebSocket, timeout);
         reconnectAttempts++;
     };
-}
-
-function isValidMessage(msg) {
-    return msg && typeof msg === 'object' && 'topic' in msg && 'event' in msg && 'payload' in msg;
-}
-
-function numberString(num) {
-    return num.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",");
-}
-
-function logTime() {
-    let seconds = (Date.now() - startTime) / 1000;
-    if (seconds < 60) {
-        console.log(`⛏️⛏️⛏️ ${(seconds).toFixed(0)} seconds ⛏️⛏️⛏️`);
-    } else {
-        console.log(`⛏️⛏️⛏️ ${(seconds / 60).toFixed(1)} minutes ⛏️⛏️⛏️`);
-    }
 }
 
 function handleIncomingMessage(message) {
@@ -399,75 +353,6 @@ function handleIncomingMessage(message) {
         session.particle.hashes && console.log(`hashes: ${session.particle.hashes}`)
         console.log(message.msg);
         logTime();
-    }
-}
-
-function draw() {
-    if (isTabVisible) {
-        background(...defaultColors.background);
-        translate(-width / 2, -height / 2);
-    }
-    particles = particles.filter((particle) => {
-        particle.update();
-        isTabVisible && particle.display();
-        const session = sessions.get(particle.sig);
-        if (particle.alpha <= 0 && session.subParticles.filter(subParticle => subParticle.alpha > 0).length == 0) {
-            sessions.delete(particle.sig);
-            return false;
-        }
-        return true;
-    });
-    for (const session of sessions.values()) {
-        session.subParticles = session.subParticles.filter((subParticle) => {
-            subParticle.update();
-            isTabVisible && subParticle.display();
-            return subParticle.alpha > 0;
-        });
-    }
-    if (showHUD) {
-        bgColorPicker.show();
-        for (let eventName in eventColorPickers) {
-            eventColorPickers[eventName].show();
-        }
-        resetButton.show();
-    } else {
-        bgColorPicker.hide();
-        for (let eventName in eventColorPickers) {
-            eventColorPickers[eventName].hide();
-        }
-        resetButton.hide();
-    }
-
-    if (hasRocket) {
-        ship.update();
-        isTabVisible && ship.display();
-
-        projectiles = projectiles.filter(projectile => {
-            projectile.update();
-            isTabVisible && projectile.display();
-            return projectile.alpha > 0;
-        });
-
-        for (let i = projectiles.length - 1; i >= 0; i--) {
-            let projectile = projectiles[i];
-            for (let j = particles.length - 1; j >= 0; j--) {
-                let particle = particles[j];
-                let distance = p5.Vector.dist(projectile.pos, particle.pos);
-                if (particle.alpha > 0 && distance < (projectile.size + particle.size) / 2) {
-                    let session = sessions.get(particle.sig);
-                    if (session) {
-                        createExplosion(session, particle.reward, particle.boost, true, [255, 0, 0]);
-                    }
-
-                    projectiles.splice(i, 1);
-                    break;
-                }
-            }
-        }
-
-        if (keyIsDown(32) && frameCount % 7 == 0) {
-            shootProjectile();
-        }
     }
 }
 
@@ -608,11 +493,223 @@ function createExplosion(session, reward, boost, shouldDie, baseColor) {
     }
 }
 
+class Ship {
+    constructor() {
+        this.pos = createVector(width / 2, height / 2);
+        this.vel = createVector(0, 0);
+        this.acc = createVector(0, 0);
+        this.angle = 0;
+        this.rotation = 0;
+        this.thrusting = false;
+        this.maxSpeed = 4;
+        this.base = 20;
+        this.height = 30;
+    }
+
+    applyForce(force) {
+        this.acc.add(force);
+    }
+
+    update() {
+        if (this.thrusting) {
+            const force = p5.Vector.fromAngle(this.angle).mult(0.1);
+            this.applyForce(force);
+        }
+
+        this.vel.add(this.acc);
+        this.vel.limit(this.maxSpeed);
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+
+        this.angle += this.rotation;
+
+        if (this.pos.x > width) this.pos.x = 0;
+        else if (this.pos.x < 0) this.pos.x = width;
+        if (this.pos.y > height) this.pos.y = 0;
+        else if (this.pos.y < 0) this.pos.y = height;
+    }
+
+    display() {
+        push();
+        translate(this.pos.x, this.pos.y);
+        rotate(this.angle + PI / 2);
+        fill(...defaultColors.events['ROCKET']);
+        noStroke();
+        beginShape();
+        vertex(0, -this.height / 2);
+        vertex(-this.base / 2, this.height / 2);
+        vertex(this.base / 2, this.height / 2);
+        endShape(CLOSE);
+        pop();
+    }
+
+    setRotation(angle) {
+        this.rotation = angle;
+    }
+
+    setThrusting(thrusting) {
+        this.thrusting = thrusting;
+    }
+
+    getTipPosition() {
+        let tip = p5.Vector.fromAngle(this.angle).mult((this.height / 2) - 1);
+        return p5.Vector.add(this.pos, tip);
+    }
+}
+
+class Projectile {
+    constructor(pos, angle, shipVel) {
+        this.pos = pos.copy();
+        this.vel = p5.Vector.fromAngle(angle).mult(7).add(shipVel);
+        this.size = 5;
+        this.alpha = 255;
+    }
+
+    update() {
+        this.pos.add(this.vel);
+        this.alpha -= 1;
+        if (this.alpha <= 0 ||
+            this.pos.x < 0 || this.pos.x > width ||
+            this.pos.y < 0 || this.pos.y > height) {
+            this.alpha = 0;
+        }
+    }
+
+    display() {
+        push();
+        noStroke();
+        fill(...defaultColors.events['ROCKET'], this.alpha);
+        ellipse(this.pos.x, this.pos.y, this.size);
+        pop();
+    }
+}
+
+function shootProjectile() {
+    let tipPos = ship.getTipPosition();
+    const projectile = new Projectile(tipPos, ship.angle, ship.vel);
+    projectiles.push(projectile);
+}
+
+function setup() {
+    createCanvas(windowWidth, windowHeight, WEBGL);
+    loadColors();
+    bgColorPicker = createColorPicker(color(...defaultColors.background));
+    bgColorPicker.position(10, 10);
+    bgColorPicker.hide();
+    bgColorPicker.input(() => {
+        defaultColors.background = [bgColorPicker.color().levels[0], bgColorPicker.color().levels[1], bgColorPicker.color().levels[2]];
+        saveColors();
+    });
+    bgColorPicker.attribute('title', 'Background');
+    bgColorPicker.style('background-color', `transparent`);
+    bgColorPicker.style('border', `transparent`);
+    let yOffset = 40;
+    for (let eventName in defaultColors.events) {
+        if (eventName != 'ROCKET' || (eventName == 'ROCKET' && hasRocket)) {
+            eventColorPickers[eventName] = createColorPicker(color(...defaultColors.events[eventName]));
+            eventColorPickers[eventName].position(10, yOffset);
+            eventColorPickers[eventName].hide();
+            eventColorPickers[eventName].input(() => {
+                let col = eventColorPickers[eventName].color();
+                defaultColors.events[eventName] = [col.levels[0], col.levels[1], col.levels[2]];
+                saveColors();
+            });
+            eventColorPickers[eventName].attribute('title', `${eventName}`);
+            eventColorPickers[eventName].style('background-color', `transparent`);
+            eventColorPickers[eventName].style('border', `transparent`);
+            yOffset += 30;
+        }
+    }
+    resetButton = createButton('⛏️');
+    resetButton.position(12, yOffset + 4);
+    resetButton.size(46, 22);
+    resetButton.hide();
+    resetButton.mousePressed(resetColors);
+    resetButton.attribute('title', 'Reset to Default Colors');
+    resetButton.style('background-color', '#2b2b2de8');
+    resetButton.style('border', 'none');
+    connectWebSocket();
+
+    hasRocket = urlParams.has('rocket');
+    if (hasRocket) {
+        ship = new Ship();
+    }
+}
+
+function draw() {
+    if (isTabVisible) {
+        background(...defaultColors.background);
+        translate(-width / 2, -height / 2);
+    }
+    particles = particles.filter((particle) => {
+        particle.update();
+        isTabVisible && particle.display();
+        const session = sessions.get(particle.sig);
+        if (particle.alpha <= 0 && session.subParticles.filter(subParticle => subParticle.alpha > 0).length == 0) {
+            sessions.delete(particle.sig);
+            return false;
+        }
+        return true;
+    });
+    for (const session of sessions.values()) {
+        session.subParticles = session.subParticles.filter((subParticle) => {
+            subParticle.update();
+            isTabVisible && subParticle.display();
+            return subParticle.alpha > 0;
+        });
+    }
+    if (showHUD) {
+        bgColorPicker.show();
+        for (let eventName in eventColorPickers) {
+            eventColorPickers[eventName].show();
+        }
+        resetButton.show();
+    } else {
+        bgColorPicker.hide();
+        for (let eventName in eventColorPickers) {
+            eventColorPickers[eventName].hide();
+        }
+        resetButton.hide();
+    }
+
+    if (hasRocket) {
+        ship.update();
+        isTabVisible && ship.display();
+
+        projectiles = projectiles.filter(projectile => {
+            projectile.update();
+            isTabVisible && projectile.display();
+            return projectile.alpha > 0;
+        });
+
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+            let projectile = projectiles[i];
+            for (let j = particles.length - 1; j >= 0; j--) {
+                let particle = particles[j];
+                let distance = p5.Vector.dist(projectile.pos, particle.pos);
+                if (particle.alpha > 0 && distance < (projectile.size + particle.size) / 2) {
+                    let session = sessions.get(particle.sig);
+                    if (session) {
+                        createExplosion(session, particle.reward, particle.boost, true, [255, 0, 0]);
+                    }
+
+                    projectiles.splice(i, 1);
+                    break;
+                }
+            }
+        }
+
+        if (keyIsDown(32) && frameCount % 7 == 0) {
+            shootProjectile();
+        }
+    }
+}
+
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
 
-document.addEventListener('visibilitychange', function() {
+document.addEventListener('visibilitychange', function () {
     isTabVisible = !document.hidden;
 });
 
@@ -712,101 +809,3 @@ setInterval(() => {
     console.log(`avg reward: ${numberString(((sumReward / particles.length) || 0).toFixed(0))}`);
     logTime();
 }, 1000 * 30);
-
-
-class Ship {
-    constructor() {
-        this.pos = createVector(width / 2, height / 2);
-        this.vel = createVector(0, 0);
-        this.acc = createVector(0, 0);
-        this.angle = 0;
-        this.rotation = 0;
-        this.thrusting = false;
-        this.maxSpeed = 4;
-        this.base = 20;
-        this.height = 30;
-    }
-
-    applyForce(force) {
-        this.acc.add(force);
-    }
-
-    update() {
-        if (this.thrusting) {
-            const force = p5.Vector.fromAngle(this.angle).mult(0.1);
-            this.applyForce(force);
-        }
-
-        this.vel.add(this.acc);
-        this.vel.limit(this.maxSpeed);
-        this.pos.add(this.vel);
-        this.acc.mult(0);
-
-        this.angle += this.rotation;
-
-        if (this.pos.x > width) this.pos.x = 0;
-        else if (this.pos.x < 0) this.pos.x = width;
-        if (this.pos.y > height) this.pos.y = 0;
-        else if (this.pos.y < 0) this.pos.y = height;
-    }
-
-    display() {
-        push();
-        translate(this.pos.x, this.pos.y);
-        rotate(this.angle + PI / 2);
-        fill(...defaultColors.events['ROCKET']);
-        noStroke();
-        beginShape();
-        vertex(0, -this.height / 2);         
-        vertex(-this.base / 2, this.height / 2);
-        vertex(this.base / 2, this.height / 2);
-        endShape(CLOSE);
-        pop();
-    }
-
-    setRotation(angle) {
-        this.rotation = angle;
-    }
-
-    setThrusting(thrusting) {
-        this.thrusting = thrusting;
-    }
-
-    getTipPosition() {
-        let tip = p5.Vector.fromAngle(this.angle).mult((this.height / 2) - 1);
-        return p5.Vector.add(this.pos, tip);
-    }
-}
-
-class Projectile {
-    constructor(pos, angle, shipVel) {
-        this.pos = pos.copy();
-        this.vel = p5.Vector.fromAngle(angle).mult(7).add(shipVel);
-        this.size = 5;
-        this.alpha = 255;
-    }
-
-    update() {
-        this.pos.add(this.vel);
-        this.alpha -= 1;
-        if (this.alpha <= 0 ||
-            this.pos.x < 0 || this.pos.x > width ||
-            this.pos.y < 0 || this.pos.y > height) {
-            this.alpha = 0;
-        }
-    }
-
-    display() {
-        push();
-        noStroke();
-        fill(...defaultColors.events['ROCKET'], this.alpha);
-        ellipse(this.pos.x, this.pos.y, this.size);
-        pop();
-    }
-}
-
-function shootProjectile() {
-    let tipPos = ship.getTipPosition();
-    const projectile = new Projectile(tipPos, ship.angle, ship.vel);
-    projectiles.push(projectile);
-}
