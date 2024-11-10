@@ -718,49 +718,52 @@ document.addEventListener('visibilitychange', function () {
 });
 
 function mouseClicked() {
-    let mouse = createVector(mouseX, mouseY);
-    let found = false;
-    for (let particle of particles) {
-        let _dist = p5.Vector.dist(mouse, particle.pos);
-        if (_dist < particle.size / 2) {
-            if (wallet.sig != particle.sig) {
-                wallet.key = particle.wallet;
-                let w = sessions.get(wallet.sig)?.particle;
-                w && (w.size = constrain(w.size - 20, 10, 38));
-            }
-            particle.size = constrain(particle.size + 20, 10, 38);
-            wallet.sig = particle.sig;
-            if (particle.wallet) {
-                console.log(`following wallet: ${particle.wallet}`)
-            } else {
-                console.log(`following sig: ${particle.sig}`)
-            }
-            found = true;
-            particle.reward && console.log('reward: ', numberString(particle.reward));
-            particle.boost && console.log('boost: ', particle.boost);
-            particle.hashes && console.log('hashes: ', particle.hashes);
-            logTime();
-            break;
-        }
-    }
-    if (!found) {
-        if (wallet.sig) {
-            let particle = sessions.get(wallet.sig)?.particle;
-            if (particle) {
-                particle.size = constrain(particle.size - 20, 10, 38);
-            }
-        }
-        if (urlParams.get('wallet')) {
-            wallet.key = urlParams.get('wallet');
-            let particle = particles.find(x => x.wallet == wallet.key);
-            if (particle) {
-                wallet.sig = particle.sig;
+    if (!showHUD) {
+
+        let mouse = createVector(mouseX, mouseY);
+        let found = false;
+        for (let particle of particles) {
+            let _dist = p5.Vector.dist(mouse, particle.pos);
+            if (_dist < particle.size / 2) {
+                if (wallet.sig != particle.sig) {
+                    wallet.key = particle.wallet;
+                    let w = sessions.get(wallet.sig)?.particle;
+                    w && (w.size = constrain(w.size - 20, 10, 38));
+                }
                 particle.size = constrain(particle.size + 20, 10, 38);
-                console.log(`following wallet: ${particle.wallet}`)
+                wallet.sig = particle.sig;
+                if (particle.wallet) {
+                    console.log(`following wallet: ${particle.wallet}`)
+                } else {
+                    console.log(`following sig: ${particle.sig}`)
+                }
+                found = true;
+                particle.reward && console.log('reward: ', numberString(particle.reward));
+                particle.boost && console.log('boost: ', particle.boost);
+                particle.hashes && console.log('hashes: ', particle.hashes);
+                logTime();
+                break;
             }
-        } else {
-            wallet.key = null;
-            wallet.sig = null;
+        }
+        if (!found) {
+            if (wallet.sig) {
+                let particle = sessions.get(wallet.sig)?.particle;
+                if (particle) {
+                    particle.size = constrain(particle.size - 20, 10, 38);
+                }
+            }
+            if (urlParams.get('wallet')) {
+                wallet.key = urlParams.get('wallet');
+                let particle = particles.find(x => x.wallet == wallet.key);
+                if (particle) {
+                    wallet.sig = particle.sig;
+                    particle.size = constrain(particle.size + 20, 10, 38);
+                    console.log(`following wallet: ${particle.wallet}`)
+                }
+            } else {
+                wallet.key = null;
+                wallet.sig = null;
+            }
         }
     }
 }
