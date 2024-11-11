@@ -15,4 +15,4 @@
             console.log(`⛏️⛏️⛏️ ${(seconds / 60).toFixed(1)} minutes ⛏️⛏️⛏️`);
         }
     };
-})(window.PondStream);
+})(window.POND);

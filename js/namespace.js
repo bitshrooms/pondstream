@@ -1,3 +1,3 @@
 (function(global) {
-    global.PondStream = global.PondStream || {};
+    global.POND = global.POND || {};
 })(window);

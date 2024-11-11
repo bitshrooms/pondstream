@@ -94,4 +94,4 @@
     app.resetColors = resetColors;
     app.setupUI = setupUI;
 
-})(window.PondStream);
+})(window.POND);

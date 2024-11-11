@@ -339,4 +339,4 @@
     window.keyPressed = app.keyPressed = keyPressed;
     window.keyReleased = app.keyReleased = keyReleased;
 
-})(window.PondStream);
+})(window.POND);

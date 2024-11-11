@@ -173,4 +173,4 @@
     app.ResponseMessage = ResponseMessage;
     app.connectWebSocket = connectWebSocket;
 
-})(window.PondStream);
+})(window.POND);

@@ -240,4 +240,4 @@
     app.createRecoilSubParticle = createRecoilSubParticle;
     app.createExplosion = createExplosion;
 
-})(window.PondStream);
+})(window.POND);
